@@ -48,7 +48,6 @@ exports.initDB = function * (req, res) {
             borrowDate DATE not null, 
             dueDate DATE not null,
             returnDate DATE default null,
-            status varchar(10) not null CHECK (status IN ('借出', '已还', '超期')),
             FOREIGN KEY (bID) REFERENCES books (bID),
             FOREIGN KEY (rID) REFERENCES readers (rID)
         );`;
@@ -715,7 +714,7 @@ exports.unReturn = function * (req, res) {
     const records = yield db.execSQL("select borrowID, books.bID, bName, borrowDate, dueDate from borrow_records " +
                                      "join books on borrow_records.bid = books.bid " +
                                      "where " +
-                                     "rID = ? and status = '借出' and returnDate is null;",
+                                     "rID = ? and returnDate is null;",
                                      [rID]);// 借出的
     if(records.length == 0) {
         res.send(`<html><head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
@@ -730,8 +729,6 @@ exports.unReturn = function * (req, res) {
         console.log(records);
         const headers = ['bID', 'bName', 'borrowDate', 'dueDate'];
         let now = new Date();
-        //  TODO 要更新吗？
-        // yield db.execSQL("update borrow_records set status='超期' where dueDate < ?", [now.toISOString().split("T")[0]]);
 
         const rows = records.map(row => {
             const cells = headers.map(header => `<td>${row[header] || ''}</td>`).join('');
@@ -819,16 +816,24 @@ exports.borrow = function * (req, res) {
         </body></html>`);
         return ;
     }
-    // TODO 自定义借书失败情况
+    // 借书数目达到上限，暂定5本
+    const borrowed = yield db.execSQL("select borrowID from borrow_records where rid = ? and returnDate is null;")
+    if(borrowed.length >= 5) {
+        res.send(`<html><body>
+        <div id='result' style='display:none'>4</div>
+        该读者已达到借阅上限（5本）
+        </body></html>`)
+        return;
+    }
 
     // 借书逻辑：books表余量减一，借阅表新增记录
     yield db.execSQL("update books set bRemaining = bRemaining - 1 where bid = ?;", [bID]);
     let due = new Date();
     due.setMonth(due.getMonth() + 2);
     due = due.toISOString().split('T')[0];
-    yield db.execSQL("insert into borrow_records (bid, rid, borrowDate, dueDate, status) " +
+    yield db.execSQL("insert into borrow_records (bid, rid, borrowDate, dueDate) " +
                      "values " +
-                     "(?, ?, ?, ?, '借出');", 
+                     "(?, ?, ?, ?);", 
                      [bID, rID, today, due]);
     res.send(`<html><body>
         <div id='result' style='display:none'>0</div>
@@ -888,10 +893,10 @@ exports.return = function * (req, res) {
     // 还书
     yield db.execSQL("update books set bRemaining = bRemaining + 1 where bid = ?;", [bID]);
     let today = new Date().toISOString().split('T')[0];
-    yield db.execSQL("update borrow_records set status = '归还', returnDate = ? where borrowID = ?;", [today, borrowID]);
+    yield db.execSQL("update borrow_records set returnDate = ? where borrowID = ?;", [today, borrowID]);
     res.send(`<html><body>
         <div id='result' style='display:none'>0</div>
-        成功
+        成功s
         </body></html>`);
     return;
 }
