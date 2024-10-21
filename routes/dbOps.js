@@ -896,7 +896,7 @@ exports.return = function * (req, res) {
     yield db.execSQL("update borrow_records set returnDate = ? where borrowID = ?;", [today, borrowID]);
     res.send(`<html><body>
         <div id='result' style='display:none'>0</div>
-        成功s
+        成功
         </body></html>`);
     return;
 }
