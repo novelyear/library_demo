@@ -7,13 +7,13 @@ app.route('/init', 'post', dbOps.initDB);
 // 增加新书
 app.route('/addNewBook', 'post', dbOps.addNewBook);
 // 增加书数量
-app.route('/addBooks', 'post', dbOps.addBooks);
+app.route('/addBook', 'post', dbOps.addBook);
 // 删除书
-app.route('/delBooks', 'post', dbOps.delBooks);
+app.route('/delBook', 'post', dbOps.delBook);
 //修改书
-app.route('/updateBooks', 'post', dbOps.updateBooks);
+app.route('/updateBook', 'post', dbOps.updateBook);
 // 查询书
-app.route('/searchBooks', 'post', dbOps.searchBooks);
+app.route('/searchBook', 'post', dbOps.searchBook);
 // 添加读者
 app.route('/addNewReader', 'post', dbOps.addNewReader);
 // 删除读者

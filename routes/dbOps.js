@@ -16,7 +16,6 @@ const isValidDate = (dateString) => {
     return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 };
 
-
 exports.initDB = function * (req, res) {
     console.log("init DB");
     try{
@@ -40,7 +39,7 @@ exports.initDB = function * (req, res) {
             rGrade INTEGER  CHECK (rGrade > 0)
         );`;
 
-        // loan_records表  bID和rID是外键  loanID自动分配唯一递增的值
+        // borrow_records表  bID和rID是外键  borrowID自动分配唯一递增的值
         const borrowRecordsTableSQL = `CREATE TABLE IF NOT EXISTS borrow_records (
             borrowID INTEGER PRIMARY KEY AUTOINCREMENT,
             bID varchar(30) not null,
@@ -58,6 +57,7 @@ exports.initDB = function * (req, res) {
         
         // 输出数据库lib.db中所有表的名字，以及其中含有的数据项数
         const tables = yield db.execSQL("SELECT name FROM sqlite_master WHERE type='table'");
+        console.log(tables);
         for (let table of tables) {
             const count = yield db.execSQL(`SELECT COUNT(*) FROM ${table.name}`);
             console.log(`${table.name}表中有${count[0]['COUNT(*)']}项数据`);
@@ -145,7 +145,7 @@ exports.addNewBook = function * (req, res) {
     return;
 }
 
-exports.addBooks = function * (req, res) {
+exports.addBook = function * (req, res) {
     console.log("增加书籍数量");
     // 获取书号、增量
     const {bID, bCnt} = req.body;
@@ -195,7 +195,7 @@ exports.addBooks = function * (req, res) {
     return;
 }
 
-exports.delBooks = function * (req, res) {
+exports.delBook = function * (req, res) {
     console.log("删除书籍");
     const {bID, bCnt} = req.body;
     const bCntNum = parseInt(bCnt, 10);
@@ -258,7 +258,7 @@ exports.delBooks = function * (req, res) {
     return;
 }
 
-exports.updateBooks = function * (req, res) {
+exports.updateBook = function * (req, res) {
     console.log("修改书信息");
     const {bID, bName, bPub, bDate, bAuthor, bMem} = req.body;
     // 存储错误信息的数组
@@ -337,7 +337,7 @@ exports.updateBooks = function * (req, res) {
     return;
 }
 
-exports.searchBooks = function * (req, res) {
+exports.searchBook = function * (req, res) {
     console.log("search books");
     const {bID, bName, bPub, bDate0, bDate1, bAuthor, bMem} = req.body;
     // 动态拼接SQL
@@ -790,7 +790,9 @@ exports.borrow = function * (req, res) {
     }
     // 该书借光了，查询books的余量
     const bRemaining = yield db.execSQL("select bRemaining from books where bid = ?", [bID]);
-    if(!bRemaining || bRemaining == 0) {
+    console.log(bRemaining[0]?.bRemaining);
+    const bRemainingNum = bRemaining[0]?.bRemaining;
+    if(!bRemaining || bRemainingNum == 0) {
         res.send(`<html><body>
         <div id='result' style='display:none'>5</div>
         该书已经全部借出
