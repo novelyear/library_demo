@@ -81,94 +81,103 @@ exports.borrow = function * (req, res) {
     console.log("借书");
     const {rID, bID} = req.body;
     // 证号、书号未填或不存在
-    if(!rID) {
-        res.send(`<html><body>
-        <div id='result' style='display:none'>1</div>
-        该证号不存在
-        </body></html>`);
-        return ;
-    }
-    else {
-        const reader = yield db.execSQL("select rName from readers where rid = ?", [rID]);
-        if(reader.length == 0) {
+    try {
+        if(!rID) {
             res.send(`<html><body>
-                <div id='result' style='display:none'>1</div>
-                该证号不存在
-                </body></html>`);
-                return ;
+            <div id='result' style='display:none'>1</div>
+            该证号不存在
+            </body></html>`);
+            return ;
         }
-    }
-    if(!bID) {
-        res.send(`<html><body>
-        <div id='result' style='display:none'>2</div>
-        该书号不存在
-        </body></html>`);
-        return ;
-    }
-    else {
-        const book = yield db.execSQL("select bName from books where bid = ?", [bID]);
-        if(book.length == 0) {
+        else {
+            const reader = yield db.execSQL("select rName from readers where rid = ?", [rID]);
+            if(reader.length == 0) {
+                res.send(`<html><body>
+                    <div id='result' style='display:none'>1</div>
+                    该证号不存在
+                    </body></html>`);
+                    return ;
+            }
+        }
+        if(!bID) {
             res.send(`<html><body>
-                <div id='result' style='display:none'>2</div>
-                该书号不存在
-                </body></html>`);
-                return ;
+            <div id='result' style='display:none'>2</div>
+            该书号不存在
+            </body></html>`);
+            return ;
         }
-    }
-    // 该书借光了，查询books的余量
-    const bRemaining = yield db.execSQL("select bRemaining from books where bid = ?", [bID]);
-    console.log(bRemaining[0]?.bRemaining);
-    const bRemainingNum = bRemaining[0]?.bRemaining;
-    if(!bRemaining || bRemainingNum == 0) {
+        else {
+            const book = yield db.execSQL("select bName from books where bid = ?", [bID]);
+            if(book.length == 0) {
+                res.send(`<html><body>
+                    <div id='result' style='display:none'>2</div>
+                    该书号不存在
+                    </body></html>`);
+                    return ;
+            }
+        }
+        // 该书借光了，查询books的余量
+        const bRemaining = yield db.execSQL("select bRemaining from books where bid = ?", [bID]);
+        console.log(bRemaining[0].bRemaining);
+        const bRemainingNum = bRemaining[0].bRemaining;
+        if(!bRemaining || bRemainingNum == 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>5</div>
+            该书已经全部借出
+            </body></html>`);
+            return;
+        }
+        // 读者已经借了该书，没还
+        const already = yield db.execSQL("select borrowID from borrow_records where rid=? and bid=? and returnDate is null;", [rID, bID]);
+        if(already.length > 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>4</div>
+            该读者已经借阅该书，且未归还
+            </body></html>`);
+            return ;
+        }
+        // 读者有超期书没还：查询读者的借阅历史中超期的或者借的就是这本书的
+        let today = new Date().toISOString().split("T")[0];
+        const history = yield db.execSQL("select borrowID from borrow_records where rid=? and returnDate is null and dueDate < ?;", [rID, today]);
+        if(history.length > 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>3</div>
+            该读者有超期书未还
+            </body></html>`);
+            return ;
+        }
+        // 借书数目达到上限，暂定5本
+        const borrowed = yield db.execSQL("select borrowID from borrow_records where rid = ? and returnDate is null;")
+        if(borrowed.length >= 5) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>6</div>
+            该读者已达到借阅上限（5本）
+            </body></html>`)
+            return;
+        }
+    
+        // 借书逻辑：books表余量减一，借阅表新增记录
+        yield db.execSQL("update books set bRemaining = bRemaining - 1 where bid = ?;", [bID]);
+        let due = new Date();
+        due.setDate(due.getDate() + 60); // 增加60天
+        due = due.toISOString().split('T')[0];
+        yield db.execSQL("insert into borrow_records (bid, rid, borrowDate, dueDate) " +
+                         "values " +
+                         "(?, ?, ?, ?);", 
+                         [bID, rID, today, due]);
         res.send(`<html><body>
-        <div id='result' style='display:none'>5</div>
-        该书已经全部借出
-        </body></html>`);
+            <div id='result' style='display:none'>0</div>
+            成功
+            </body></html>`);
+        return ;
+    } catch (error) {
+        res.send(`<html><body>
+            <div id='result' style='display:none'>6</div>
+            失败，未知错误
+            </body></html>`);
+        console.error("修改书籍失败:", error);
         return;
     }
-    // 读者已经借了该书，没还
-    const already = yield db.execSQL("select borrowID from borrow_records where rid=? and bid=? and returnDate is null;", [rID, bID]);
-    if(already.length > 0) {
-        res.send(`<html><body>
-        <div id='result' style='display:none'>4</div>
-        该读者已经借阅该书，且未归还
-        </body></html>`);
-        return ;
-    }
-    // 读者有超期书没还：查询读者的借阅历史中超期的或者借的就是这本书的
-    let today = new Date().toISOString().split("T")[0];
-    const history = yield db.execSQL("select borrowID from borrow_records where rid=? and returnDate is null and dueDate < ?;", [rID, today]);
-    if(history.length > 0) {
-        res.send(`<html><body>
-        <div id='result' style='display:none'>3</div>
-        该读者有超期书未还
-        </body></html>`);
-        return ;
-    }
-    // 借书数目达到上限，暂定5本
-    const borrowed = yield db.execSQL("select borrowID from borrow_records where rid = ? and returnDate is null;")
-    if(borrowed.length >= 5) {
-        res.send(`<html><body>
-        <div id='result' style='display:none'>4</div>
-        该读者已达到借阅上限（5本）
-        </body></html>`)
-        return;
-    }
-
-    // 借书逻辑：books表余量减一，借阅表新增记录
-    yield db.execSQL("update books set bRemaining = bRemaining - 1 where bid = ?;", [bID]);
-    let due = new Date();
-    due.setMonth(due.getMonth() + 2);
-    due = due.toISOString().split('T')[0];
-    yield db.execSQL("insert into borrow_records (bid, rid, borrowDate, dueDate) " +
-                     "values " +
-                     "(?, ?, ?, ?);", 
-                     [bID, rID, today, due]);
-    res.send(`<html><body>
-        <div id='result' style='display:none'>0</div>
-        成功
-        </body></html>`);
-    return ;
 }
 
 exports.return = function * (req, res) {
@@ -220,9 +229,8 @@ exports.return = function * (req, res) {
     }
     const borrowID = history[0].borrowID;
     // 还书
-    yield db.execSQL("update books set bRemaining = bRemaining + 1 where bid = ?;", [bID]);
-    let today = new Date().toISOString().split('T')[0];
-    yield db.execSQL("update borrow_records set returnDate = ? where borrowID = ?;", [today, borrowID]);
+    yield db.execSQL("update books set bRemaining = bRemaining + 1 where bid = ?;", [bID]); // 加数量
+    yield db.execSQL("delete from borrow_records where borrowID = ?;", [borrowID]); // 删记录
     res.send(`<html><body>
         <div id='result' style='display:none'>0</div>
         成功

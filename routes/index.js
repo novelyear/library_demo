@@ -11,7 +11,7 @@ app.route('/addNewBook', 'post', bookService.addNewBook);
 app.route('/addBook', 'post', bookService.addBook);
 // 删除书
 app.route('/delBook', 'post', bookService.delBook);
-//修改书
+// 修改书
 app.route('/updateBook', 'post', bookService.updateBook);
 // 查询书
 app.route('/searchBook', 'post', bookService.searchBook);

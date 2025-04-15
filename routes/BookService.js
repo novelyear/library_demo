@@ -69,12 +69,25 @@ exports.addNewBook = function * (req, res) {
     }
     // 如果不存在，插入数据库
     try {
-        yield db.execSQL("INSERT INTO books (bID, bName, bPub, bDate, bAuthor, bMem, bCnt, bRemaining) VALUES (?,?,?,?,?,?,?,?)", 
-            [bID, bName, bPub, bDate, bAuthor, bMem, bCnt, bCnt]
-        );
+        // yield db.execSQL("INSERT INTO books (bID, bName, bPub, bDate, bAuthor, bMem, bCnt, bRemaining) VALUES (?,?,?,?,?,?,?,?)", 
+        //     [bID, bName, bPub, bDate, bAuthor, bMem, bCnt, bCnt]
+        // );
+        // 构造完整的 SQL 语句字符串
+        const sql = "INSERT INTO books (bID, bName, bPub, bDate, bAuthor, bMem, bCnt, bRemaining) VALUES (?,?,?,?,?,?,?,?)";
+        const params = [bID, bName, bPub, bDate, bAuthor, bMem, bCnt, bCnt];
+        
+        // 输出 SQL 语句和参数
+        console.log("Executing SQL:", sql);
+        console.log("With parameters:", params);
+
+        // 执行 SQL 语句
+        yield db.execSQL(sql, params);
     } catch (error) {
         console.error("插入书籍失败:", error);
-        res.send(`<html><body>插入失败，未知错误</body></html>`);
+        res.send(`<html><body>
+            <div id='result' style='display:none'>2</div>
+            提交的参数有误：${error}
+            </body></html>`);
         return;
     }
     res.send(`<html><body>
@@ -126,7 +139,16 @@ exports.addBook = function * (req, res) {
     const bCntNum = parseInt(bCnt, 10);
     bookCnt += bCntNum;
     bookRemaining += bCntNum;
-    yield db.execSQL("update books set bCnt = ?, bRemaining = ? where bID = ?", [bookCnt, bookRemaining, bID]);
+    try{
+        yield db.execSQL("update books set bCnt = ?, bRemaining = ? where bID = ?", [bookCnt, bookRemaining, bID]);
+    } catch (error) {
+        console.error("增加书籍失败:", error);
+        res.send(`<html><body>
+            <div id='result' style='display:none'>2</div>
+            提交的参数有误：${error}
+            </body></html>`);
+        return;
+    }
     res.send(`<html><body>
         <div id='result' style='display:none'>0</div>
         成功
@@ -156,45 +178,54 @@ exports.delBook = function * (req, res) {
     // 有误，返回
     if(errors.length > 0) {
         res.send(`<html><body>
-            <div id='result' style='display:none'>2</div>
+            <div id='result' style='display:none'>3</div>
             提交的参数有误：<br>${errors.join('<br>')}
             </body></html>`);
         return;
     }
-    // 查询该书是否存在
-    const result = yield db.execSQL("select bCnt, bRemaining from books where bID = ?;", [bID]);
-    // 若不存在，返回
-    if(!result || result.length == 0) {
+    try {
+        // 查询该书是否存在
+        const result = yield db.execSQL("select bCnt, bRemaining from books where bID = ?;", [bID]);
+        // 若不存在，返回
+        if(!result || result.length == 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>1</div>
+            该书不存在
+            </body></html>`);
+            return;
+        }
+        // 存在，为bCnt和Remaining增加
+        let bookCnt = result[0].bCnt;
+        let bookRemaining = result[0].bRemaining;
+        if (bCntNum > bookRemaining) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>2</div>
+            减少的数量大于该书目前在库数量
+            </body></html>`);
+            return;
+        }
+        // 减少或删除
+        if (bCntNum == bookRemaining && bookRemaining == bookCnt) {
+            yield db.execSQL("delete from books where bID = ?", [bID]);
+        }
+        else {
+            bookCnt -= bCntNum;
+            bookRemaining -= bCntNum;
+            yield db.execSQL("update books set bCnt = ?, bRemaining = ? where bID = ?", [bookCnt, bookRemaining, bID]);
+        }
         res.send(`<html><body>
-        <div id='result' style='display:none'>1</div>
-        该书不存在
+            <div id='result' style='display:none'>0</div>
+            成功
+            </body></html>`);
+        return;
+    } catch (error) {
+        console.error("删除书籍失败:", error);
+        res.send(`<html><body>
+        <div id='result' style='display:none'>3</div>
+        提交的参数有误：${error}
         </body></html>`);
         return;
     }
-    // 存在，为bCnt和Remaining增加
-    let bookCnt = result[0].bCnt;
-    let bookRemaining = result[0].bRemaining;
-    if (bCntNum > bookRemaining) {
-        res.send(`<html><body>
-        <div id='result' style='display:none'>2</div>
-        减少的数量大于该书目前在库数量
-        </body></html>`);
-        return;
-    }
-    // 减少或删除
-    if (bCntNum == bookRemaining && bookRemaining == bookCnt) {
-        yield db.execSQL("delete from books where bID = ?", [bID]);
-    }
-    else {
-        bookCnt -= bCntNum;
-        bookRemaining -= bCntNum;
-        yield db.execSQL("update books set bCnt = ?, bRemaining = ? where bID = ?", [bookCnt, bookRemaining, bID]);
-    }
-    res.send(`<html><body>
-        <div id='result' style='display:none'>0</div>
-        成功
-        </body></html>`);
-    return;
 }
 
 exports.updateBook = function * (req, res) {
@@ -255,25 +286,34 @@ exports.updateBook = function * (req, res) {
             </body></html>`);
         return;
     }
-    // 查询该书是否存在
-    const result = yield db.execSQL("select bName from books where bID = ?;", [bID]);
-    // 若不存在，返回
-    if(!result || result.length == 0) {
+    try {
+        // 查询该书是否存在
+        const result = yield db.execSQL("select bName from books where bID = ?;", [bID]);
+        // 若不存在，返回
+        if(!result || result.length == 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>1</div>
+            该书不存在
+            </body></html>`);
+            return;
+        }
+        // 存在，修改信息，
+        const sql = `update books set ${fields.join(', ')} WHERE bID = ?`;
+        values.push(bID);
+        yield db.execSQL(sql, values);
+            res.send(`<html><body>
+            <div id='result' style='display:none'>0</div>
+            成功
+            </body></html>`);
+        return;
+    } catch (error) {
+        console.error("修改书籍失败:", error);
         res.send(`<html><body>
-        <div id='result' style='display:none'>1</div>
-        该书不存在
-        </body></html>`);
+            <div id='result' style='display:none'>2</div>
+            提交的参数有误：${error}
+            </body></html>`);
         return;
     }
-    // 存在，修改信息，
-    const sql = `update books set ${fields.join(', ')} WHERE bID = ?`;
-    values.push(bID);
-    yield db.execSQL(sql, values);
-        res.send(`<html><body>
-        <div id='result' style='display:none'>0</div>
-        成功
-        </body></html>`);
-    return;
 }
 
 exports.searchBook = function * (req, res) {
@@ -333,45 +373,56 @@ exports.searchBook = function * (req, res) {
         fields.push(`bMem like ?`);
         values.push(`%${bMem}%`);
     }
-    // 有误，返回
+    // 有误，返回空表格
     if(errors.length > 0) {
         res.send(`
-            <html><body>
-            <div id='result' style='display:none'>2</div>
-            提交的参数有误：<br>${errors.join('<br>')}
-            </body></html>`
+            <html><head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
+            <body>
+            <table border=1 id='result'>
+            </table>
+            </body>
+            </html>`
         );
         return;
     }
-    // 动态SQL
-    const sql = `SELECT * FROM books ${fields.length ? 'WHERE ' + fields.join(' AND ') : ''}`;
-    console.log(sql);
-    const result = yield db.execSQL(sql, values);
-    if(result.length == 0) {
-        res.send(`<html><head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
-        <body>
-        <table border=1 id='result'></table>
-        </body>
-        </html>`);
-        return;
-    }
-    else {
-        console.log("found!");
-        const headers = ['bID', 'bName', 'bCnt', 'bRemaining', 'bPub', 'bDate', 'bAuthor', 'bMem'];
-        const rows = result.map(row => {
-            const cells = headers.map(header => `<td>${row[header] || ''}</td>`).join('');
-            return `<tr>${cells}</tr>`;
-        }).join('');
-        res.send(`
-            <html>
-            <head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
+    try {
+        // 动态SQL
+        const sql = `SELECT * FROM books ${fields.length ? 'WHERE ' + fields.join(' AND ') : ''}`;
+        console.log(sql);
+        const result = yield db.execSQL(sql, values);
+        if(result.length == 0) {
+            res.send(`<html><head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
             <body>
-                <table border="1" id="result">
-                    ${rows}
-                </table>
+            <table border=1 id='result'></table>
             </body>
-            </html>
-        `);
-        return ;
+            </html>`);
+            return;
+        }
+        else {
+            console.log("found!");
+            const headers = ['bID', 'bName', 'bCnt', 'bRemaining', 'bPub', 'bDate', 'bAuthor', 'bMem'];
+            const rows = result.map(row => {
+                const cells = headers.map(header => `<td>${row[header] != null ? row[header] : ''}</td>`).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+            res.send(`
+                <html>
+                <head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
+                <body>
+                    <table border="1" id="result">
+                        ${rows}
+                    </table>
+                </body>
+                </html>
+            `);
+            return ;
+        }
+    } catch (error) {
+        res.send(`<html><head><META HTTP-EQUIV="Content-Type" Content="text-html;charset=utf-8"></head>
+            <body>
+            <table border=1 id='result'></table>
+            </body>
+            </html>`);
+        return;
     }
 }

@@ -4,18 +4,6 @@ const Database = require("../coSqlite3");
 
 const db = Database("lib.db");
 
-const isValidDate = (dateString) => {
-    // 检查格式是否为 yyyy-mm-dd
-    const regex = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
-    if (!regex.test(dateString)) {
-        return false; // 不符合格式
-    }
-    const [year, month, day] = dateString.split('-').map(Number);
-    const date = new Date(year, month - 1, day); // 让NB的js自动修正日期
-    // 修正前后一致证明日期合法
-    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
-};
-
 exports.addNewReader = function * (req, res) {
     console.log("新增读者");
     const {rID, rName, rSex, rDept, rGrade} = req.body;
@@ -45,23 +33,31 @@ exports.addNewReader = function * (req, res) {
             </body></html>`);
         return;
     }
-    const result = yield db.execSQL("select rname from readers where rid = ?", [rID]);
-    if(result.length > 0) {
+    try {
+        const result = yield db.execSQL("select rname from readers where rid = ?", [rID]);
+        if(result.length > 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>1</div>
+            该证号已经存在
+            </body></html>`);
+            return;
+        }
+        yield db.execSQL("insert into readers" +
+            " (rid, rname, rsex, rdept, rgrade)" +
+            " values (?,?,?,?,?)", 
+            [rID, rName, rSex, rDept, rGrade]);
         res.send(`<html><body>
-        <div id='result' style='display:none'>1</div>
-        该证号已经存在
-        </body></html>`);
+            <div id='result' style='display:none'>0</div>
+            成功
+            </body></html>`);
+        return;
+    } catch (error) {
+        res.send(`<html><body>
+            <div id='result' style='display:none'>2</div>
+            提交的参数有误：${error}
+            </body></html>`);
         return;
     }
-    yield db.execSQL("insert into readers" +
-        " (rid, rname, rsex, rdept, rgrade)" +
-        " values (?,?,?,?,?)", 
-        [rID, rName, rSex, rDept, rGrade]);
-    res.send(`<html><body>
-        <div id='result' style='display:none'>0</div>
-        成功
-        </body></html>`);
-    return;
 }
 
 exports.delReader = function * (req, res) {
@@ -75,32 +71,41 @@ exports.delReader = function * (req, res) {
         </body></html>`);
         return;
     }
-    // 查询证号
-    const result = yield db.execSQL("select rname from readers where rid = ?;", [rID]);
-    if(result == null || result.length == 0) {
-        res.send(`<html><body>
-            <div id='result' style='display:none'>1</div>
-            该证号不存在
+    try {
+        // 查询证号
+        const result = yield db.execSQL("select rname from readers where rid = ?;", [rID]);
+        if(result == null || result.length == 0) {
+            res.send(`<html><body>
+                <div id='result' style='display:none'>1</div>
+                该证号不存在
+                </body></html>`);
+            return;
+        }
+        // 查询借阅记录
+        const borrow = yield db.execSQL("select borrowID from borrow_records where rid = ?;", [rID]);
+        console.log(borrow);
+        // 有借阅，不能删
+        if(borrow.length > 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>2</div>
+            该读者尚有书籍未归还
             </body></html>`);
-        return;
-    }
-    // 查询借阅记录
-    const borrow = yield db.execSQL("select borrowID from borrow_records where rid = ?;", [rID]);
-    // 有借阅，不能删
-    if(borrow.length > 0) {
+            return;
+        }
+        // 无借阅，删
+        else {
+            yield db.execSQL("delete from readers where rid = ?", [rID]);
+            res.send(`<html><body>
+            <div id='result' style='display:none'>0</div>
+            成功
+            </body></html>`);
+            return;
+        }
+    } catch (error) {
         res.send(`<html><body>
-        <div id='result' style='display:none'>2</div>
-        该读者尚有书籍未归还
-        </body></html>`);
-        return;
-    }
-    // 无借阅，删
-    else {
-        yield db.execSQL("delete from readers where rid = ?", [rID]);
-        res.send(`<html><body>
-        <div id='result' style='display:none'>0</div>
-        成功
-        </body></html>`);
+            <div id='result' style='display:none'>2</div>
+            提交的参数有误：${error}
+            </body></html>`);
         return;
     }
 }
@@ -155,22 +160,29 @@ exports.updateReader = function * (req, res) {
             </body></html>`);
         return;
     }
-    const result = yield db.execSQL("select rname from readers where rid = ?", [rID]);
-    if(result.length == 0) {
+    try {
+        const result = yield db.execSQL("select rname from readers where rid = ?", [rID]);
+        if(result.length == 0) {
+            res.send(`<html><body>
+            <div id='result' style='display:none'>1</div>
+            该证号不存在
+            </body></html>`);
+            return;
+        }
+        const sql = `update readers set ${fields.join(', ')} WHERE rID = ?`;
+        values.push(rID);
+        yield db.execSQL(sql, values);
         res.send(`<html><body>
-        <div id='result' style='display:none'>1</div>
-        该证号不存在
-        </body></html>`);
+            <div id='result' style='display:none'>0</div>
+            成功
+            </body></html>`);
         return;
+    } catch (error) {
+        res.send(`<html><body>
+            <div id='result' style='display:none'>2</div>
+            提交的参数有误：${error}
+            </body></html>`);
     }
-    const sql = `update readers set ${fields.join(', ')} WHERE rID = ?`;
-    values.push(rID);
-    yield db.execSQL(sql, values);
-    res.send(`<html><body>
-        <div id='result' style='display:none'>0</div>
-        成功
-        </body></html>`);
-    return;
 }
 
 exports.searchReader = function * (req, res) {
@@ -309,6 +321,7 @@ exports.unReturn = function * (req, res) {
         console.log(records);
         const headers = ['bID', 'bName', 'borrowDate', 'dueDate'];
         let now = new Date();
+        now.setHours(0, 0, 0, 0);
 
         const rows = records.map(row => {
             const cells = headers.map(header => `<td>${row[header] || ''}</td>`).join('');
@@ -334,10 +347,9 @@ exports.overDue = function * (req, res) {
     console.log("查询超期读者列表");
     // 查询超期记录，提取其中的读者
     let today = new Date().toISOString().split('T')[0];
-    // TODO 优化这条SQL
     const results = yield db.execSQL(
         `select * from readers 
-         where rid in (select distinct rid from borrow_records where returnDate is null AND dueDate < ?)`,
+         where rid in (select distinct rid from borrow_records where dueDate < ?)`,
         [today]
     );
     console.log(results);
